@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Infinity IO Range Generator</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<style>
+body{background:#F5F7F6;color:#1E293B}
+.navbar,.footer{background:#1F5F4A;color:#fff}
+.card{border:none;border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,.08)}
+.btn-main{background:#1F5F4A;color:#fff}
+.btn-main:hover{background:#184a39;color:#fff}
+.hero{padding:40px 0}
+.footer{padding:12px;text-align:center;margin-top:30px}
+#dropZone{border:2px dashed #6C9A8B;padding:40px;border-radius:16px;text-align:center;background:white}
+.table-wrap{max-height:450px;overflow:auto}
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark">
+<div class="container">
+<span class="navbar-brand mb-0 h1">Infinity IO Range Generator</span>
+</div>
+</nav>
+
+<div class="container hero">
+<div class="card p-4 mb-4">
+<h2>Infinity IO Range Generator</h2>
+<p>Generate InfinityInput and InfinityOutput verification ranges directly from point lists.</p>
+</div>
+
+<div class="card p-4 mb-4">
+<div id="dropZone">
+<input type="file" id="fileInput" accept=".xlsx,.xls" class="form-control mb-3">
+<div id="fileName">No file selected</div>
+</div>
+<button class="btn btn-main mt-3" onclick="processFile()">Generate Infinity IO Sheet</button>
+</div>
+
+<div class="row mb-4">
+<div class="col-md-4"><div class="card p-3"><h5>Total Points</h5><h2 id="total">0</h2></div></div>
+<div class="col-md-4"><div class="card p-3"><h5>InfinityInput</h5><h2 id="inputs">0</h2></div></div>
+<div class="col-md-4"><div class="card p-3"><h5>InfinityOutput</h5><h2 id="outputs">0</h2></div></div>
+</div>
+
+<div class="card p-4">
+<h4>Preview</h4>
+<div class="table-wrap">
+<table class="table table-sm table-bordered" id="preview"></table>
+</div>
+<button id="downloadBtn" class="btn btn-success mt-3" style="display:none">Download Processed Excel</button>
+</div>
+</div>
+
+<div class="footer">
+Infinity IO Range Generator | Version 1.2.7
+</div>
+
+<script>
+let processedWorkbook=null;
+
+document.getElementById('fileInput').addEventListener('change',e=>{
+ if(e.target.files.length) document.getElementById('fileName').innerText=e.target.files[0].name;
+});
+
+function processFile(){
+ const file=document.getElementById('fileInput').files[0];
+ if(!file){alert("Select an Excel file.");return;}
+
+ const reader=new FileReader();
+ reader.onload=function(e){
+  const wb=XLSX.read(e.target.result,{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const data=XLSX.utils.sheet_to_json(ws,{header:1});
+
+  let output=[];
+  let inCnt=0,outCnt=0;
+
+  const header=[data[0][1],data[0][2],data[0][3],data[0][5],data[0][11],data[0][12],data[0][13],data[0][14],"Range 1","Range 2","Range 3"];
+  output.push(header);
+
+  for(let i=1;i<data.length;i++){
+    const r=data[i]||[];
+    const type=r[3];
+
+    if(type==="InfinityInput" || type==="InfinityOutput"){
+      const L=r[11],M=r[12],N=r[13],O=r[14];
+
+      if((L??"")!=="" || (M??"")!=="" || (N??"")!=="" || (O??"")!==""){
+
+        let row=[r[1],r[2],r[3],r[5],L,M,N,O,"","",""];
+
+        if(type==="InfinityInput"){
+          inCnt++;
+          let low=Number(O||0);
+          let high=Number(N||0);
+          let total=high-low;
+          let x=(total*0.58)/100;
+
+          let p1=low,p2=low+(total/2),p3=high;
+
+          row[8]=(p1-x).toFixed(2)+" to "+(p1+x).toFixed(2);
+          row[9]=(p2-x).toFixed(2)+" to "+(p2+x).toFixed(2);
+          row[10]=(p3-x).toFixed(2)+" to "+(p3+x).toFixed(2);
+        }
+
+        if(type==="InfinityOutput"){
+          outCnt++;
+          let top=Number(L||0);
+          let bot=Number(M||0);
+
+          if(bot===4 && top===20){
+            row[8]="3.89mA to 4.11mA";
+            row[9]="11.89mA to 12.11mA";
+            row[10]="19.89mA to 20.11mA";
+          }else{
+            let unit=([0,2,10].includes(top)&&[0,2,10].includes(bot))?"V":"mA";
+            let h=Math.max(top,bot);
+            let x=(h*0.58)/100;
+
+            let p1=bot;
+            let p2=bot+((top-bot)/2);
+            let p3=top;
+
+            row[8]=(p1-x).toFixed(2)+unit+" to "+(p1+x).toFixed(2)+unit;
+            row[9]=(p2-x).toFixed(2)+unit+" to "+(p2+x).toFixed(2)+unit;
+            row[10]=(p3-x).toFixed(2)+unit+" to "+(p3+x).toFixed(2)+unit;
+          }
+        }
+
+        output.push(row);
+      }
+    }
+  }
+
+  document.getElementById('total').innerText=output.length-1;
+  document.getElementById('inputs').innerText=inCnt;
+  document.getElementById('outputs').innerText=outCnt;
+
+  let tbl=document.getElementById('preview');
+  tbl.innerHTML="";
+  output.slice(0,21).forEach((r,idx)=>{
+    let tr=document.createElement('tr');
+    r.forEach(c=>{
+      let cell=document.createElement(idx===0?'th':'td');
+      cell.innerText=c??"";
+      tr.appendChild(cell);
+    });
+    tbl.appendChild(tr);
+  });
+
+  processedWorkbook=XLSX.utils.book_new();
+  let outSheet=XLSX.utils.aoa_to_sheet(output);
+  XLSX.utils.book_append_sheet(processedWorkbook,outSheet,"Infinity_IO");
+
+  let btn=document.getElementById('downloadBtn');
+  btn.style.display='inline-block';
+  btn.onclick=function(){
+      XLSX.writeFile(processedWorkbook,"Infinity_IO_Output.xlsx");
+  };
+ };
+ reader.readAsArrayBuffer(file);
+}
+</script>
+</body>
+</html>
